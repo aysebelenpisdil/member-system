@@ -101,4 +101,27 @@ function tarihFormatla($tarih) {
     // d.m.Y = gün.ay.yıl (01.12.2024 gibi)
     return date("d.m.Y", strtotime($tarih));
 }
+// 11. Kullanıcı giriş yapmış mı kontrol eden fonksiyon
+function girisYapmisMi() {
+    return isset($_SESSION['kullanici_id']) && !empty($_SESSION['kullanici_id']);
+}
+
+// 12. Giriş yapmamışsa login sayfasına yönlendir
+function girisKontrol() {
+    if (!girisYapmisMi()) {
+        header("Location: login.php");
+        exit();
+    }
+}
+
+// 13. Başarı mesajı göster
+function basariMesaji($mesaj) {
+    return '<div class="alert alert-success">' . $mesaj . '</div>';
+}
+
+// 14. Hata mesajı göster  
+function hataMesaji($mesaj) {
+    return '<div class="alert alert-error">' . $mesaj . '</div>';
+}
+
 ?>
