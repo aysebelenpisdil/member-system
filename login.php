@@ -1,51 +1,78 @@
 <?php
-// Gerekli dosyaları dahil et
 require_once 'includes/config.php';
 require_once 'includes/functions.php';
 
-// Eğer zaten giriş yapmışsa ana sayfaya yönlendir
 if (girisYapmisMi()) {
     header("Location: dashboard.php");
     exit();
 }
 
-// Hata mesajı için değişken
 $hata = '';
 
-// Form gönderildi mi?
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    // Form verilerini al
     $email = temizle($_POST['email']);
-    $password = $_POST['password']; // Şifreyi olduğu gibi al
+    $password = $_POST['password'];
     
-    // Boş alan kontrolü
     if (empty($email) || empty($password)) {
         $hata = "Email ve şifre alanları boş bırakılamaz!";
     } else {
-        // Kullanıcıyı veritabanında ara
+        // Giriş denemesi kaydı
+        $ip = ipAdresiAl();
         try {
-            $sorgu = $db->prepare("SELECT * FROM users WHERE email = ?");
-            $sorgu->execute([$email]);
-            $kullanici = $sorgu->fetch();
+            // Son 15 dakikadaki başarısız denemeleri kontrol et
+            $lockout_time = date('Y-m-d H:i:s', time() - LOGIN_LOCKOUT_TIME);
+            $check_attempts = $db->prepare("SELECT COUNT(*) FROM login_attempts WHERE email = ? AND success = 0 AND attempted_at > ?");
+            $check_attempts->execute([$email, $lockout_time]);
+            $failed_attempts = $check_attempts->fetchColumn();
             
-            if ($kullanici) {
-                // Kullanıcı bulundu, şifre kontrolü yap
-                if (password_verify($password, $kullanici['password'])) {
-                    // Şifre doğru! Oturum değişkenlerini ayarla
-                    $_SESSION['kullanici_id'] = $kullanici['id'];
-                    $_SESSION['kullanici_adi'] = $kullanici['name'];
-                    $_SESSION['kullanici_email'] = $kullanici['email'];
-                    
-                    // Dashboard'a yönlendir
-                    header("Location: dashboard.php");
-                    exit();
-                } else {
-                    $hata = "Şifre yanlış!";
-                }
+            if ($failed_attempts >= MAX_LOGIN_ATTEMPTS) {
+                $hata = "Çok fazla başarısız deneme! Lütfen 15 dakika sonra tekrar deneyin.";
             } else {
-                $hata = "Bu email adresi ile kayıtlı kullanıcı bulunamadı!";
+                $sorgu = $db->prepare("SELECT * FROM users WHERE email = ?");
+                $sorgu->execute([$email]);
+                $kullanici = $sorgu->fetch();
+                
+                if ($kullanici) {
+                    if ($kullanici['status'] === 'banned') {
+                        $hata = "Hesabınız engellenmiş!";
+                        $log_attempt = $db->prepare("INSERT INTO login_attempts (email, ip_address, success) VALUES (?, ?, 0)");
+                        $log_attempt->execute([$email, $ip]);
+                    } elseif ($kullanici['status'] === 'inactive') {
+                        $hata = "Hesabınız aktif değil!";
+                        $log_attempt = $db->prepare("INSERT INTO login_attempts (email, ip_address, success) VALUES (?, ?, 0)");
+                        $log_attempt->execute([$email, $ip]);
+                    } elseif (password_verify($password, $kullanici['password'])) {
+                        // Başarılı giriş
+                        $_SESSION['kullanici_id'] = $kullanici['id'];
+                        $_SESSION['kullanici_adi'] = $kullanici['name'];
+                        $_SESSION['kullanici_email'] = $kullanici['email'];
+                        $_SESSION['kullanici_rol'] = $kullanici['role'] ?? 'user';
+                        $_SESSION['last_activity'] = time();
+                        
+                        // Başarılı giriş kaydı
+                        $log_attempt = $db->prepare("INSERT INTO login_attempts (email, ip_address, success) VALUES (?, ?, 1)");
+                        $log_attempt->execute([$email, $ip]);
+                        
+                        // Kullanıcı bilgilerini güncelle
+                        $update_user = $db->prepare("UPDATE users SET last_login = NOW(), login_count = login_count + 1 WHERE id = ?");
+                        $update_user->execute([$kullanici['id']]);
+                        
+                        // Aktivite kaydı
+                        aktiviteKaydet($db, $kullanici['id'], 'login', 'Sisteme giriş yapıldı');
+                        
+                        header("Location: dashboard.php");
+                        exit();
+                    } else {
+                        $hata = "Şifre yanlış!";
+                        $log_attempt = $db->prepare("INSERT INTO login_attempts (email, ip_address, success) VALUES (?, ?, 0)");
+                        $log_attempt->execute([$email, $ip]);
+                    }
+                } else {
+                    $hata = "Bu email adresi ile kayıtlı kullanıcı bulunamadı!";
+                    $log_attempt = $db->prepare("INSERT INTO login_attempts (email, ip_address, success) VALUES (?, ?, 0)");
+                    $log_attempt->execute([$email, $ip]);
+                }
             }
-            
         } catch(PDOException $e) {
             $hata = "Giriş sırasında bir hata oluştu!";
         }
@@ -152,7 +179,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
         
-        /* Claude tarzı hover efekti */
         button::before {
             content: '';
             position: absolute;
@@ -190,7 +216,26 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             border-bottom-color: #1a1a1a;
         }
         
-        /* Mesaj kutuları */
+        .links-row {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px solid #e8d5c4;
+        }
+        
+        .links-row a {
+            color: #1a1a1a;
+            text-decoration: none;
+            font-size: 13px;
+            border-bottom: 1px solid transparent;
+            transition: border-color 0.2s ease;
+        }
+        
+        .links-row a:hover {
+            border-bottom-color: #1a1a1a;
+        }
+        
         .alert {
             padding: 15px;
             margin-bottom: 20px;
@@ -216,7 +261,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
         
-        /* Form animasyonu */
         .container {
             animation: fadeIn 0.6s ease;
         }
@@ -232,7 +276,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             }
         }
         
-        /* Giriş yap özel efekt */
         .login-icon {
             display: inline-block;
             margin-right: 8px;
@@ -278,8 +321,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <button type="submit">Giriş Yap</button>
         </form>
         
-        <div class="link">
-            Henüz üye değil misiniz? <a href="register.php">Kayıt Ol</a>
+        <div class="links-row">
+            <a href="forgot-password.php">Şifremi Unuttum</a>
+            <a href="register.php">Kayıt Ol</a>
         </div>
     </div>
 </body>
