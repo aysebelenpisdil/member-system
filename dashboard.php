@@ -37,6 +37,18 @@ try {
 } catch(PDOException $e) {
     die("Veritabanı hatası!");
 }
+
+$bugun = new DateTime();
+$aylar = [
+    1 => 'Ocak', 2 => 'Şubat', 3 => 'Mart', 4 => 'Nisan',
+    5 => 'Mayıs', 6 => 'Haziran', 7 => 'Temmuz', 8 => 'Ağustos',
+    9 => 'Eylül', 10 => 'Ekim', 11 => 'Kasım', 12 => 'Aralık'
+];
+$gunler = [
+    'Monday' => 'Pazartesi', 'Tuesday' => 'Salı', 'Wednesday' => 'Çarşamba',
+    'Thursday' => 'Perşembe', 'Friday' => 'Cuma', 'Saturday' => 'Cumartesi', 'Sunday' => 'Pazar'
+];
+$tarih_str = $bugun->format('d') . ' ' . $aylar[(int)$bugun->format('n')] . ' ' . $bugun->format('Y') . ', ' . $gunler[$bugun->format('l')];
 ?>
 
 <!DOCTYPE html>
@@ -503,7 +515,7 @@ try {
         <div class="welcome-card">
             <div class="welcome-content">
                 <h2>Hoş geldin, <?php echo htmlspecialchars($kullanici_adi); ?>! 👋</h2>
-                <p>Bugün <?php echo strftime('%d %B %Y, %A'); ?>. İyi günler dileriz!</p>
+                <p>Bugün <?php echo $tarih_str; ?>. İyi günler dileriz!</p>
             </div>
         </div>
         
